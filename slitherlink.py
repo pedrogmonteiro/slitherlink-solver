@@ -20,7 +20,7 @@ from search import (
     astar_search,
     breadth_first_tree_search,
     depth_first_tree_search,
-    greedy_search,
+    greedy_search,  
     recursive_best_first_search,
 )
 
@@ -44,18 +44,42 @@ class Board:
 
     def __init__(self, matrix: list):
         self.board = matrix
-        self.N = len(matrix)
-        self.M = len(matrix[0]) if self.N > 0 else 0
+        self.N = len(matrix) # numero de linhas [i,0]
+        self.M = len(matrix[0]) if self.N > 0 else 0 # numero de colunas [0,j]
+        self.arestas_hash = {}
+        for i in range(self.N):
+            for j in range(self.M):
+                self.arestas_hash[(i, j)] = [('h',i,j), ('h',i+1,j), ('v',i,j), ('v',i,j+1)]
+
+
 
     def adjacent_cell(self, cell:tuple) -> list:
         """Devolve uma lista das células que fazem
         fronteira com a célula enviada no argumento"""
+        # as celulas irao aparecer no formato WASD
+        # ATENCAO: celulas nas extremidades nem sempre teem WASD completo
+        n = self.N
+        m = self.M
+        adjacent = []
+
+        i,j = cell[0], cell[1]
+        if i - 1 >= 0: # caso exista celula em cima (W)
+            adjacent.append((i - 1, j))
+        if j - 1 >= 0: # caso exista celula a esquerda (A)
+            adjacent.append((i, j - 1))
+        if i + 1 < n: # caso exista celula em baixo (S)
+            adjacent.append((i + 1, j))
+        if j + 1 < m: # caso exista celula a direita (D)
+            adjacent.append((i, j + 1))
+
+        return adjacent
         #TODO
-        pass
+        #pass
 
     def get_cell_edges(self, row:int, column:int) -> list:
-        """Devolve os arestas da célula enviada no argumento"""
+        """Devolve as arestas da célula enviada no argumento"""
         #TODO
+        return self.arestas_hash[(row, column)]
         pass
 
     def get_active_edges(self, row:int, column:int) -> list:
@@ -129,7 +153,7 @@ class Slitherlink(Problem):
 if __name__ == "__main__":
     # TODO:
     board = Board.parse_instance()
-    print(board.board)
+    print(board.adjacent_cell((0,0)))
     problem = Slitherlink(board)
     # Usar uma técnica de procura para resolver a instância,
     # Retirar a solução a partir do nó resultante,
