@@ -46,18 +46,24 @@ class Board:
         self.board = matrix
         self.N = len(matrix) # numero de linhas [i,0]
         self.M = len(matrix[0]) if self.N > 0 else 0 # numero de colunas [0,j]
-        self.arestas_hash = {}
+        self.edges_hash, self.edges_active_hash = self.initialize_edges_maps()
+
+    def initialize_edges_maps(self):
+        edges_hash = {}
+        edges_active_hash = {}
         for i in range(self.N):
             for j in range(self.M):
-                self.arestas_hash[(i, j)] = [('h',i,j), ('h',i+1,j), ('v',i,j), ('v',i,j+1)]
-
-
+                edges_hash[(i, j)] = [('h',i,j), ('h',i+1,j), ('v',i,j), ('v',i,j+1)]
+                edges_active_hash[('h',i,j)] = "0"
+                edges_active_hash[('h',i+1,j)] = "0"
+                edges_active_hash[('v',i,j)] = "0"
+                edges_active_hash[('v',i,j+1)] = "0"
+        return edges_hash, edges_active_hash
 
     def adjacent_cell(self, cell:tuple) -> list:
         """Devolve uma lista das células que fazem
         fronteira com a célula enviada no argumento"""
-        # as celulas irao aparecer no formato WASD
-        # ATENCAO: celulas nas extremidades nem sempre teem WASD completo
+        # Formato WASD
         n = self.N
         m = self.M
         adjacent = []
@@ -71,22 +77,37 @@ class Board:
             adjacent.append((i + 1, j))
         if j + 1 < m: # caso exista celula a direita (D)
             adjacent.append((i, j + 1))
-
         return adjacent
-        #TODO
-        #pass
 
     def get_cell_edges(self, row:int, column:int) -> list:
         """Devolve as arestas da célula enviada no argumento"""
-        #TODO
-        return self.arestas_hash[(row, column)]
-        pass
+        return self.edges_hash[(row, column)]
 
     def get_active_edges(self, row:int, column:int) -> list:
         """Devolve o número de arestas ativas"""
-        #TODO
-        pass
+        count = 0
+        for edge in self.get_cell_edges(row, column):
+            if self.edges_active_hash[edge] == "1":
+                count += 1
+        return count
+    
+    def invalidate_edges_that_border_zero_edge_cells(self, row:int, column:int):
+        """Invalida as arestas que fazem fronteira com células que têm valor 0"""
+        for edge in self.get_cell_edges(row, column):
+            if self.edges_active_hash[edge] == "1":
+                self.invalidate_edge(edge)
 
+    def disactivate_edge(self, edge:tuple):
+        """Desativa a aresta enviada no argumento"""
+        self.edges_active_hash[edge] = "0"
+
+    def activate_edge(self, edge:tuple):
+        """Ativa a aresta enviada no argumento"""
+        self.edges_active_hash[edge] = "1"
+
+    def invalidate_edge(self, edge:tuple):
+        """Invalida a aresta enviada no argumento, ou seja, não pode ser ativada"""
+        self.edges_active_hash[edge] = "X"
 
     @staticmethod
     def parse_instance():
@@ -153,7 +174,12 @@ class Slitherlink(Problem):
 if __name__ == "__main__":
     # TODO:
     board = Board.parse_instance()
-    print(board.adjacent_cell((0,0)))
+    print(board.adjacent_cell((3,1)))
+    print(board.get_cell_edges(3,1))
+    print(board.get_cell_edges(4,4))
+    board.activate_edge(('h',3,1))
+    board.invalidate_edge(('h',4,1))
+    print(board.get_active_edges(3,1))
     problem = Slitherlink(board)
     # Usar uma técnica de procura para resolver a instância,
     # Retirar a solução a partir do nó resultante,
