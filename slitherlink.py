@@ -109,6 +109,31 @@ class Board:
         """Invalida a aresta enviada no argumento, ou seja, não pode ser ativada"""
         self.edges_active_hash[edge] = "X"
 
+    def make_copy(self):
+        """Devolve uma cópia do tabuleiro, ou seja, uma nova instância da classe Board
+        com o mesmo estado do tabuleiro atual."""
+        new_board = Board(copy.deepcopy(self.board))
+        new_board.edges_hash = copy.deepcopy(self.edges_hash)
+        new_board.edges_active_hash = copy.deepcopy(self.edges_active_hash)
+        return new_board
+    
+    def make_copy_with_edge_activation(self, edge:tuple):
+        """Devolve uma cópia do tabuleiro, ou seja, uma nova instância da classe Board
+        com o mesmo estado do tabuleiro atual, mas com a aresta enviada no argumento ativada."""
+        new_board = self.make_copy()
+        new_board.activate_edge(edge)
+        return new_board
+    
+    def make_move(self, edge:tuple):
+        """Devolve uma cópia do tabuleiro, ou seja, uma nova instância da classe Board
+        com o mesmo estado do tabuleiro atual, mas com a aresta enviada no argumento ativada
+        e as arestas que fazem fronteira com células que têm valor 0 invalidadas."""
+        new_board = self.make_copy_with_edge_activation(edge)
+        for cell in self.get_cells_bordering_edge(edge):
+            if self.board[cell[0]][cell[1]] == 0:
+                new_board.invalidate_edges_that_border_zero_edge_cells(cell[0], cell[1])
+        return new_board
+
     @staticmethod
     def parse_instance():
         """Lê o test do standard input (stdin) que é passado como argumento
