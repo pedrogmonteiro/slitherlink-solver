@@ -115,13 +115,25 @@ class Board:
                 
         return edges_hash, edges_active_hash
 
+    def adjacent_cell(self, cell: tuple) -> list:
+        """Devolve uma lista das células que fazem
+        fronteira com a célula enviada no argumento."""
+        r, c = cell
+        adjacent = []
+        # Direções: Cima, Baixo, Esquerda, Direita
+        for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+            nr, nc = r + dr, c + dc
+            if 0 <= nr < self.N and 0 <= nc < self.M:
+                adjacent.append((nr, nc))
+        return adjacent
+
     def propagate_constraints(self) -> bool:
         """Propaga as restrições lógicas do Slitherlink pelas arestas."""
         changed = True
         while changed:
             changed = False
             
-            # 1. Propagação baseada nas pistas das células
+            # Propagação baseada nas pistas das células
             for r in range(self.N):
                 for c in range(self.M):
                     hint = self.board[r][c]
@@ -142,7 +154,7 @@ class Board:
                                 self.edges_active_hash[e] = "1"
                             changed = True
 
-            # 2. Propagação baseada nos Vértices (Grau 0 ou 2)
+            # Propagação baseada nos Vértices (Grau 0 ou 2)
             vertex_map = defaultdict(list)
             for edge, status in self.edges_active_hash.items():
                 etype, r, c = edge
@@ -170,7 +182,7 @@ class Board:
                         self.edges_active_hash[e] = "X"
                     changed = True
 
-            # 3. Poda Antecipada de Sub-loops Isolados (Crucial para velocidade)
+            # Poda Antecipada de Sub-loops Isolados
             if not self._check_subloops_validity():
                 return False
                     
@@ -218,19 +230,19 @@ class Board:
                     if nxt not in curr_component_vertices:
                         queue.append(nxt)
             
-            # Cada aresta não direcionada é contada duas vezes (uma por cada vértice vizinho)
             edges_count_in_component //= 2
             
-            # Se formou um ciclo isolado, mas não contém todas as arestas ativas presentes no tabuleiro
             if is_closed_loop and edges_count_in_component < total_edges:
                 return False
                 
         return True
 
     def get_cell_edges(self, row: int, column: int) -> list:
+        """Devolve as arestas da célula enviada no argumento."""
         return self.edges_hash[(row, column)]
 
     def get_active_edges(self, row: int, column: int) -> int:
+        """Devolve o número de arestas ativas."""
         return sum(1 for e in self.get_cell_edges(row, column) if self.edges_active_hash[e] == "1")
 
     def make_copy(self):
@@ -239,6 +251,7 @@ class Board:
     @staticmethod
     def parse_instance():
         board = []
+        expected_cols = None
         while True:
             line = stdin.readline()
             if not line:
@@ -248,31 +261,57 @@ class Board:
                 continue
             parts = line.split()
             row = [None if p == "." else int(p) for p in parts]
+            if expected_cols is not None and len(row) != expected_cols:
+                break
+            if expected_cols is None:
+                expected_cols = len(row)
+                
             board.append(row)
         
         b = Board(board)
-        # Aplicar dedução estática inicial (ex: pistas de 0 ou cantos óbvios)
+        
+        # Tratar pistas de 0 (bloquear todas as suas arestas)
         for i in range(b.N):
             for j in range(b.M):
                 if b.board[i][j] == 0:
                     for edge in b.get_cell_edges(i, j):
                         b.edges_active_hash[edge] = "X"
+
+        for r in range(b.N):
+            for c in range(b.M):
+                if b.board[r][c] == 3:
+                    for nr, nc in b.adjacent_cell((r, c)):
+                        if b.board[nr][nc] == 3:
+                            # Se são vizinhos na mesma linha (horizontal)
+                            if r == nr:
+                                shared_c = max(c, nc)
+                                b.edges_active_hash[('v', r, shared_c)] = "1"      # Aresta comum central
+                                b.edges_active_hash[('v', r, shared_c - 1)] = "1"  # Extremidade esquerda
+                                b.edges_active_hash[('v', r, shared_c + 1)] = "1"  # Extremidade direita
+                            # Se são vizinhos na mesma coluna (vertical)
+                            elif c == nc:
+                                shared_r = max(r, nr)
+                                b.edges_active_hash[('h', shared_r, c)] = "1"      # Aresta comum central
+                                b.edges_active_hash[('h', shared_r - 1, c)] = "1"  # Extremidade superior
+                                b.edges_active_hash[('h', shared_r + 1, c)] = "1"  # Extremidade inferior
+
         b.propagate_constraints()
         return b
 
 
 class Slitherlink(Problem):
     def __init__(self, board: Board, gui=None):
+        """O construtor especifica o estado inicial."""
         super().__init__(SlitherlinkState(board))
         self.gui = gui
 
     def actions(self, state: SlitherlinkState):
+        """Retorna uma lista de ações que podem ser executadas a
+        partir do estado passado como argumento."""
         if state.board is None:
             return []
 
         board = state.board
-        
-        # Heurística MRV: Encontra a célula com menos arestas livres disponíveis
         best_edge = None
         min_free = 99
         
@@ -289,10 +328,8 @@ class Slitherlink(Problem):
                         best_edge = free_edges[0]
 
         if best_edge:
-            # Ramificação Binária pura: para a aresta selecionada, tenta ativar (1) ou desativar (X)
             return [(best_edge, "1"), (best_edge, "X")]
 
-        # Fallback para células vazias sem pistas
         for edge, status in board.edges_active_hash.items():
             if status == "0":
                 return [(edge, "1"), (edge, "X")]
@@ -300,6 +337,10 @@ class Slitherlink(Problem):
         return []
 
     def result(self, state: SlitherlinkState, action):
+        """Retorna o estado resultante de executar a 'action' sobre
+        'state' passado como argumento. A ação a executar deve ser uma
+        das presentes na lista obtida pela execução de
+        self.actions(state)."""
         if state.board is None:
             return state
             
@@ -308,25 +349,25 @@ class Slitherlink(Problem):
         new_board.edges_active_hash[edge] = target_status
         
         if not new_board.propagate_constraints():
-            # Retorna um estado fantasma com board=None se quebrar as regras locais imediatas
             return SlitherlinkState(None)
             
         return SlitherlinkState(new_board)
 
     def goal_test(self, state: SlitherlinkState):
+        """Retorna True se e só se o estado passado como argumento é
+        um estado objetivo. Deve verificar se todas as posições do tabuleiro
+        estão preenchidas de acordo com as regras do problema."""
         if state.board is None:
             return False
             
         board = state.board
         
-        # Verificar se todas as pistas numéricas foram perfeitamente satisfeitas
         for r in range(board.N):
             for c in range(board.M):
                 hint = board.board[r][c]
                 if hint is not None and board.get_active_edges(r, c) != hint:
                     return False
 
-        # Validar topologia final de ciclo contínuo único
         graph = defaultdict(list)
         for edge, status in board.edges_active_hash.items():
             if status == "1":
@@ -357,6 +398,7 @@ class Slitherlink(Problem):
         return len(visited) == len(graph)
 
     def h(self, node: Node):
+        """Função heuristica utilizada para a procura A*."""
         if node.state.board is None:
             return float('inf')
         board = node.state.board
@@ -373,7 +415,6 @@ if __name__ == "__main__":
     board = Board.parse_instance()
     problem = Slitherlink(board)
     
-    # Executa a procura DFS nativa do search.py
     solution_node = depth_first_tree_search(problem)
     
     if solution_node is not None:
