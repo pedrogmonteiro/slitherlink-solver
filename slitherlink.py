@@ -112,57 +112,73 @@ class Board:
                     ('h', i + 1, j),  # Bottom
                     ('v', i, j)       # Left
                 ]
+
+        # Mapear quais as arestas estão associadas a cada vértice para facilitar a propagação de restrições
+        self.vertex_to_edges = defaultdict(list)
+        for edge in edges_active_hash.keys():
+            edge_type, row, col = edge
+            v1, v2 = ((row, col), (row, col + 1)) if edge_type == 'h' else ((row, col), (row + 1, col))
+            self.vertex_to_edges[v1].append(edge)
+            self.vertex_to_edges[v2].append(edge)
                 
         return edges_hash, edges_active_hash
 
     def adjacent_cell(self, cell: tuple) -> list:
         """Devolve uma lista das células que fazem
         fronteira com a célula enviada no argumento."""
-        r, c = cell
+        row, col = cell
         adjacent = []
-        # Direções: Cima, Baixo, Esquerda, Direita
-        for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
-            nr, nc = r + dr, c + dc
-            if 0 <= nr < self.N and 0 <= nc < self.M:
-                adjacent.append((nr, nc))
+        # Cima, Baixo, Esquerda, Direita
+        for drow, dcol in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+            nrow, ncol = row + drow, col + dcol
+            if 0 <= nrow < self.N and 0 <= ncol < self.M:
+                adjacent.append((nrow, ncol))
         return adjacent
+    
+    def invalidate_edge(self, edge):
+        """Marca a aresta como inválida (não ativa)."""
+        self.edges_active_hash[edge] = "X"
+
+    def activate_edge(self, edge):
+        """Marca a aresta como ativa."""
+        self.edges_active_hash[edge] = "1"
+
+    def desactivate_edge(self, edge):
+        """Marca a aresta como livre (não decidida)."""
+        self.edges_active_hash[edge] = "0"
+
+    def is_edge_active(self, edge) -> bool:
+        """Devolve True se a aresta estiver ativa, False caso contrário."""
+        return self.edges_active_hash.get(edge, "0") == "1"
 
     def propagate_constraints(self) -> bool:
         """Propaga as restrições lógicas do Slitherlink pelas arestas."""
         changed = True
         while changed:
             changed = False
-            
             # Propagação baseada nas pistas das células
-            for r in range(self.N):
-                for c in range(self.M):
-                    hint = self.board[r][c]
+            for row in range(self.N):
+                for col in range(self.M):
+                    hint = self.board[row][col]
                     if hint is not None:
-                        active = self.get_active_edges(r, c)
-                        free_edges = [e for e in self.get_cell_edges(r, c) if self.edges_active_hash[e] == "0"]
-                        invalid_edges_count = sum(1 for e in self.get_cell_edges(r, c) if self.edges_active_hash[e] == "X")
+                        active = self.get_active_edges(row, col)
+                        free_edges = [e for e in self.get_cell_edges(row, col) if not self.is_edge_active(e) and self.edges_active_hash[e] != "X"]
+                        invalid_edges_count = sum(1 for e in self.get_cell_edges(row, col) if self.edges_active_hash[e] == "X")
                         
                         if active > hint or (4 - invalid_edges_count) < hint:
                             return False
                         
                         if active == hint and free_edges:
                             for e in free_edges:
-                                self.edges_active_hash[e] = "X"
+                                self.invalidate_edge(e)
                             changed = True
                         elif active + len(free_edges) == hint and free_edges:
                             for e in free_edges:
-                                self.edges_active_hash[e] = "1"
+                                self.activate_edge(e)
                             changed = True
 
             # Propagação baseada nos Vértices (Grau 0 ou 2)
-            vertex_map = defaultdict(list)
-            for edge, status in self.edges_active_hash.items():
-                etype, r, c = edge
-                v1, v2 = ((r, c), (r, c + 1)) if etype == 'h' else ((r, c), (r + 1, c))
-                vertex_map[v1].append(edge)
-                vertex_map[v2].append(edge)
-
-            for vertex, edges in vertex_map.items():
+            for edges in self.vertex_to_edges.values():
                 active = sum(1 for e in edges if self.edges_active_hash[e] == "1")
                 free = [e for e in edges if self.edges_active_hash[e] == "0"]
                 total_possible = active + len(free)
@@ -172,14 +188,14 @@ class Board:
 
                 if active == 2 and free:
                     for e in free:
-                        self.edges_active_hash[e] = "X"
+                        self.invalidate_edge(e)
                     changed = True
                 elif active == 1 and len(free) == 1:
-                    self.edges_active_hash[free[0]] = "1"
+                    self.activate_edge(free[0])
                     changed = True
                 elif active == 0 and total_possible < 2 and free:
                     for e in free:
-                        self.edges_active_hash[e] = "X"
+                        self.invalidate_edge(e)
                     changed = True
 
             # Poda Antecipada de Sub-loops Isolados
@@ -195,32 +211,26 @@ class Board:
         for edge, status in self.edges_active_hash.items():
             if status == "1":
                 total_edges += 1
-                etype, r, c = edge
-                v1, v2 = ((r, c), (r, c + 1)) if etype == 'h' else ((r, c), (r + 1, c))
+                etype, row, col = edge
+                v1, v2 = ((row, col), (row, col + 1)) if etype == 'h' else ((row, col), (row + 1, col))
                 graph[v1].append(v2)
                 graph[v2].append(v1)
-        
         if not graph:
             return True
-
         visited = set()
-        
         for start in graph:
             if start in visited:
                 continue
-            
             curr_component_vertices = set()
             queue = [start]
             is_closed_loop = True
             edges_count_in_component = 0
-            
             while queue:
                 curr = queue.pop(0)
                 if curr in curr_component_vertices:
                     continue
                 curr_component_vertices.add(curr)
                 visited.add(curr)
-                
                 if len(graph[curr]) != 2:
                     is_closed_loop = False
                 
@@ -229,12 +239,9 @@ class Board:
                 for nxt in graph[curr]:
                     if nxt not in curr_component_vertices:
                         queue.append(nxt)
-            
             edges_count_in_component //= 2
-            
             if is_closed_loop and edges_count_in_component < total_edges:
                 return False
-                
         return True
 
     def get_cell_edges(self, row: int, column: int) -> list:
@@ -246,7 +253,9 @@ class Board:
         return sum(1 for e in self.get_cell_edges(row, column) if self.edges_active_hash[e] == "1")
 
     def make_copy(self):
-        return Board(self.board, self.edges_hash, self.edges_active_hash.copy())
+        new_board = Board(self.board, self.edges_hash, self.edges_active_hash.copy())
+        new_board.vertex_to_edges = self.vertex_to_edges
+        return new_board
 
     @staticmethod
     def parse_instance():
@@ -275,25 +284,25 @@ class Board:
             for j in range(b.M):
                 if b.board[i][j] == 0:
                     for edge in b.get_cell_edges(i, j):
-                        b.edges_active_hash[edge] = "X"
+                        b.invalidate_edge(edge)
 
-        for r in range(b.N):
-            for c in range(b.M):
-                if b.board[r][c] == 3:
-                    for nr, nc in b.adjacent_cell((r, c)):
-                        if b.board[nr][nc] == 3:
+        for row in range(b.N):
+            for col in range(b.M):
+                if b.board[row][col] == 3:
+                    for nrow, ncol in b.adjacent_cell((row, col)):
+                        if b.board[nrow][ncol] == 3:
                             # Se são vizinhos na mesma linha (horizontal)
-                            if r == nr:
-                                shared_c = max(c, nc)
-                                b.edges_active_hash[('v', r, shared_c)] = "1"      # Aresta comum central
-                                b.edges_active_hash[('v', r, shared_c - 1)] = "1"  # Extremidade esquerda
-                                b.edges_active_hash[('v', r, shared_c + 1)] = "1"  # Extremidade direita
+                            if row == nrow:
+                                shared_col = max(col, ncol)
+                                b.activate_edge(('v', row, shared_col))      # Aresta comum central
+                                b.activate_edge(('v', row, shared_col - 1))  # Extremidade esquerda
+                                b.activate_edge(('v', row, shared_col + 1))  # Extremidade direita
                             # Se são vizinhos na mesma coluna (vertical)
-                            elif c == nc:
-                                shared_r = max(r, nr)
-                                b.edges_active_hash[('h', shared_r, c)] = "1"      # Aresta comum central
-                                b.edges_active_hash[('h', shared_r - 1, c)] = "1"  # Extremidade superior
-                                b.edges_active_hash[('h', shared_r + 1, c)] = "1"  # Extremidade inferior
+                            elif col == ncol:
+                                shared_row = max(row, nrow)
+                                b.activate_edge(('h', shared_row, col))      # Aresta comum central
+                                b.activate_edge(('h', shared_row - 1, col))  # Extremidade superior
+                                b.activate_edge(('h', shared_row + 1, col))  # Extremidade inferior
 
         b.propagate_constraints()
         return b
@@ -312,17 +321,18 @@ class Slitherlink(Problem):
             return []
 
         board = state.board
-        best_edge = None
-        min_free = 99
+        best_edge = None # Variável para armazenar a melhor aresta encontrada
+        min_free = 99 # Um número grande para garantir que qualquer aresta livre encontrada seja melhor do que isso
         
-        for r in range(board.N):
-            for c in range(board.M):
-                hint = board.board[r][c]
+        for row in range(board.N):
+            for col in range(board.M):
+                hint = board.board[row][col]
                 if hint is not None:
-                    active = board.get_active_edges(r, c)
+                    active = board.get_active_edges(row, col)
                     if active == hint:
                         continue
-                    free_edges = [e for e in board.get_cell_edges(r, c) if board.edges_active_hash[e] == "0"]
+                    free_edges = [e for e in board.get_cell_edges(row, col) if (not board.is_edge_active(e) and board.edges_active_hash[e] != "X")]
+                    # Se o número de arestas livres for menor que o mínimo encontrado, atualizamos a melhor ação
                     if free_edges and len(free_edges) < min_free:
                         min_free = len(free_edges)
                         best_edge = free_edges[0]
@@ -362,24 +372,24 @@ class Slitherlink(Problem):
             
         board = state.board
         
-        for r in range(board.N):
-            for c in range(board.M):
-                hint = board.board[r][c]
-                if hint is not None and board.get_active_edges(r, c) != hint:
+        for row in range(board.N):
+            for col in range(board.M):
+                hint = board.board[row][col]
+                if hint is not None and board.get_active_edges(row, col) != hint:
                     return False
 
         graph = defaultdict(list)
         for edge, status in board.edges_active_hash.items():
             if status == "1":
-                etype, r, c = edge
-                v1, v2 = ((r, c), (r, c + 1)) if etype == 'h' else ((r, c), (r + 1, c))
+                edge_type, row, col = edge
+                v1, v2 = ((row, col), (row, col + 1)) if edge_type == 'h' else ((row, col), (row + 1, col))
                 graph[v1].append(v2)
                 graph[v2].append(v1)
         
         if not graph:
             return False
             
-        for vertex, neighbors in graph.items():
+        for neighbors in graph.values():
             if len(neighbors) != 2:
                 return False 
                 
@@ -399,16 +409,7 @@ class Slitherlink(Problem):
 
     def h(self, node: Node):
         """Função heuristica utilizada para a procura A*."""
-        if node.state.board is None:
-            return float('inf')
-        board = node.state.board
-        h_val = 0
-        for r in range(board.N):
-            for c in range(board.M):
-                hint = board.board[r][c]
-                if hint is not None:
-                    h_val += abs(hint - board.get_active_edges(r, c))
-        return h_val
+        pass
 
 
 if __name__ == "__main__":
