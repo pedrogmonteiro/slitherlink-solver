@@ -1,5 +1,5 @@
 # slitherlink_gui.py: Visual interface for the Slitherlink board.
-#
+
 # Each cell has four edges (top, right, bottom, left).
 # Click an edge to cycle through states: unknown → active → forbidden → unknown.
 # Use the toolbar to load boards/solutions and validate constraints.
